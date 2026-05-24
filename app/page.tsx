@@ -1,9 +1,34 @@
+'use client'
+
 import { ChallengeHero } from '@/components/challenge-hero'
+import { PopupProvider } from '@/contexts/popup-context'
+import { InfoModal } from '@/components/info-modal'
+import { SetupModal } from '@/components/setup-modal'
+import { Toaster } from 'sonner'
 
 export default function Page() {
   return (
-    <main>
-      <ChallengeHero />
-    </main>
+    <PopupProvider>
+      <main>
+        <ChallengeHero />
+        
+        {/* Modals */}
+        <InfoModal />
+        <SetupModal />
+        
+        {/* Toast notifications - RTL positioned */}
+        <Toaster 
+          position="top-center"
+          dir="rtl"
+          toastOptions={{
+            style: {
+              background: '#0f1f35',
+              border: '1px solid #1e3a5f',
+              color: '#fff',
+            },
+          }}
+        />
+      </main>
+    </PopupProvider>
   )
 }

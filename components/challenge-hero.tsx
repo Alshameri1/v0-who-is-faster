@@ -1,6 +1,7 @@
 'use client'
 
 import { Settings, BookOpen, ArrowLeft } from 'lucide-react'
+import { usePopup } from '@/contexts/popup-context'
 
 /**
  * ChallengeHero Component
@@ -8,6 +9,8 @@ import { Settings, BookOpen, ArrowLeft } from 'lucide-react'
  * Features RTL layout, stylized Arabic typography, and interactive buttons
  */
 export function ChallengeHero() {
+  const { openPopup } = usePopup()
+
   return (
     <section className="relative min-h-screen w-full overflow-hidden bg-[#0c1628]">
       {/* Subtle gradient overlay for depth */}
@@ -55,7 +58,7 @@ export function ChallengeHero() {
         <div className="flex w-full max-w-lg flex-col items-center gap-4 px-4">
           {/* Primary CTA - Start Challenge Button */}
           <button
-            onClick={() => console.log('Start challenge clicked')}
+            onClick={() => openPopup('setup')}
             className="group relative w-full overflow-hidden rounded-xl bg-[#22b8cf] px-8 py-4 text-xl font-bold text-white shadow-lg shadow-[#22b8cf]/30 transition-all duration-300 ease-out hover:scale-[1.02] hover:bg-[#1fa8bd] hover:shadow-xl hover:shadow-[#22b8cf]/40 active:scale-[0.98] sm:text-2xl"
           >
             {/* Hover shine effect */}
@@ -83,7 +86,7 @@ export function ChallengeHero() {
 
             {/* Explain Challenge Button - Red */}
             <button
-              onClick={() => console.log('Explain challenge clicked')}
+              onClick={() => openPopup('info')}
               className="group relative flex-1 overflow-hidden rounded-xl bg-[#e63946] px-6 py-3.5 text-lg font-bold text-white shadow-lg shadow-[#e63946]/30 transition-all duration-300 ease-out hover:scale-[1.02] hover:bg-[#d32836] hover:shadow-xl hover:shadow-[#e63946]/40 active:scale-[0.98] sm:text-xl"
             >
               {/* Hover shine effect */}
