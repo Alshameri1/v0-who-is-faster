@@ -29,13 +29,15 @@ export function PostSetupModal() {
   const isOpen = activePopup === 'post-setup'
   
   const [resultPanelUrl, setResultPanelUrl] = useState('')
+  const [gamePlayUrl, setGamePlayUrl] = useState('')
   const [showLocalResults, setShowLocalResults] = useState(false)
 
-  // Generate URL only on client side to avoid SSR hydration issues
+  // Generate URLs only on client side to avoid SSR hydration issues
   useEffect(() => {
     if (typeof window !== 'undefined' && gameSession?.gameId) {
-      const url = `${window.location.origin}/game/${gameSession.gameId}/result-panel`
-      setResultPanelUrl(url)
+      const baseUrl = window.location.origin
+      setResultPanelUrl(`${baseUrl}/game/${gameSession.gameId}/result-panel`)
+      setGamePlayUrl(`${baseUrl}/game/${gameSession.gameId}/play`)
     }
   }, [gameSession?.gameId])
 
@@ -86,14 +88,13 @@ export function PostSetupModal() {
     }
   }, [resultPanelUrl])
 
-  // Action: Continue playing locally
+  // Action: Continue playing locally (navigate to game play page)
   const handlePlayLocally = useCallback(() => {
-    closePopup()
-    toast.success('جاهز للعب!', {
-      description: 'ابدأ التحدي الآن على هذه الشاشة',
-      duration: 3000,
-    })
-  }, [closePopup])
+    if (typeof window !== 'undefined' && gamePlayUrl) {
+      closePopup()
+      window.location.href = gamePlayUrl
+    }
+  }, [closePopup, gamePlayUrl])
 
   // Action: Toggle local results view
   const handleToggleLocalResults = useCallback(() => {
