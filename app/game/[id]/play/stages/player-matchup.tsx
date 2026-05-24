@@ -36,9 +36,18 @@ export function PlayerMatchup({
   const shuffleInterval1 = useRef<NodeJS.Timeout | null>(null)
   const shuffleInterval2 = useRef<NodeJS.Timeout | null>(null)
 
-  // Get available players (not yet used)
-  const availablePlayers1 = team1.players.filter(p => !usedPlayersTeam1.includes(p.id))
-  const availablePlayers2 = team2.players.filter(p => !usedPlayersTeam2.includes(p.id))
+  // Smart player selection: Get available players from pool (not yet used in current cycle)
+  const getAvailablePlayers = useCallback((
+    allPlayers: { id: string; name: string }[],
+    usedPlayerIds: string[]
+  ): { id: string; name: string }[] => {
+    const available = allPlayers.filter(p => !usedPlayerIds.includes(p.id))
+    // If all players used (shouldn't happen with proper pool refill), return all players
+    return available.length > 0 ? available : allPlayers
+  }, [])
+
+  const availablePlayers1 = getAvailablePlayers(team1.players, usedPlayersTeam1)
+  const availablePlayers2 = getAvailablePlayers(team2.players, usedPlayersTeam2)
 
   // Shuffle animation effect
   useEffect(() => {
@@ -62,7 +71,7 @@ export function PlayerMatchup({
       if (shuffleInterval1.current) clearInterval(shuffleInterval1.current)
       if (shuffleInterval2.current) clearInterval(shuffleInterval2.current)
 
-      // Select random players from available ones
+      // Select random players from AVAILABLE pool only (anti-repeat)
       const selected1 = availablePlayers1[Math.floor(Math.random() * availablePlayers1.length)]
       const selected2 = availablePlayers2[Math.floor(Math.random() * availablePlayers2.length)]
 
@@ -109,10 +118,21 @@ export function PlayerMatchup({
   }, [selectedPlayer1, selectedPlayer2, onComplete])
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+    <div className="h-screen flex flex-col items-center justify-center p-4 overflow-hidden">
       {/* Header */}
       <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">المواجهة</h2>
-      <p className="text-white/60 mb-12">من سيواجه من؟</p>
+      <p className="text-white/60 mb-8 md:mb-12">من سيواجه من؟</p>
+
+      {/* Available players indicator */}
+      <div className="flex items-center justify-center gap-6 mb-6 text-xs md:text-sm">
+        <span className="text-cyan-400/70">
+          متبقي: {availablePlayers1.length} من {team1.players.length}
+        </span>
+        <span className="text-white/30">|</span>
+        <span className="text-red-400/70">
+          متبقي: {availablePlayers2.length} من {team2.players.length}
+        </span>
+      </div>
 
       {/* Matchup cards container */}
       <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 w-full max-w-4xl">
@@ -165,7 +185,7 @@ export function PlayerMatchup({
         {/* VS Badge */}
         <div className="relative">
           <div 
-            className={`w-20 h-20 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-2xl font-black text-white shadow-xl transition-all duration-500 ${
+            className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-xl md:text-2xl font-black text-white shadow-xl transition-all duration-500 ${
               isLocked ? 'scale-110' : 'animate-pulse'
             }`}
             style={{
@@ -229,7 +249,7 @@ export function PlayerMatchup({
       </div>
 
       {/* Continue button */}
-      <div className={`mt-12 transition-all duration-500 ${isLocked ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+      <div className={`mt-8 md:mt-12 transition-all duration-500 ${isLocked ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button
           onClick={handleContinue}
           disabled={!isLocked}
