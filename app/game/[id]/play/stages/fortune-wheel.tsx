@@ -18,8 +18,8 @@ const CATEGORIES = [
   { id: 8, name: 'تحدي سريع', color: '#14b8a6' },       // teal
 ]
 
-// Spin animation duration in ms
-const SPIN_DURATION_MS = 4000
+// Spin animation duration in ms - CSS transition and reveal timeout use this
+const SPIN_DURATION_MS = 3000
 
 export function FortuneWheel({ onComplete }: FortuneWheelProps) {
   const [isSpinning, setIsSpinning] = useState(false)
@@ -28,21 +28,29 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
   const [showResult, setShowResult] = useState(false)
   const wheelRef = useRef<HTMLDivElement>(null)
   const spinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const mountedRef = useRef(true)
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      mountedRef.current = false
       if (spinTimeoutRef.current) {
         clearTimeout(spinTimeoutRef.current)
+        spinTimeoutRef.current = null
       }
     }
   }, [])
 
+  // Store the pre-selected winning category in a ref to survive re-renders
+  const pendingCategoryRef = useRef<string | null>(null)
+
   // "RESULT-FIRST" approach: Pick category first, then calculate exact rotation
   const spinWheel = useCallback(() => {
     if (isSpinning) return
+
+    // Clear any existing timeout
+    if (spinTimeoutRef.current) {
+      clearTimeout(spinTimeoutRef.current)
+      spinTimeoutRef.current = null
+    }
 
     setIsSpinning(true)
     setShowResult(false)
@@ -51,26 +59,15 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
     // STEP 1: Randomly select the winning category FIRST
     const winningIndex = Math.floor(Math.random() * CATEGORIES.length)
     const winningCategory = CATEGORIES[winningIndex]
+    
+    // Store in ref so it survives any re-renders
+    pendingCategoryRef.current = winningCategory.name
+    console.log('[v0] Wheel spin started, pre-selected category:', winningCategory.name)
 
     // STEP 2: Calculate exact rotation to land on that category
     const segmentAngle = 360 / CATEGORIES.length
     
-    // The pointer is at top (12 o'clock = 0 degrees in CSS)
-    // Segment 0 starts at -90deg (because we drew segments starting from 3 o'clock position)
-    // To align segment N with the pointer at top, we need:
-    // - Segment center angle from top = (N * segmentAngle) + (segmentAngle / 2) - 90
-    // - But we rotate clockwise, so we need the wheel to stop such that the winning segment is at top
-    
-    // Calculate where the winning segment's center currently is
-    // After full rotations, we want the wheel oriented so winning segment is at top
-    // The angle needed = -(winningIndex * segmentAngle + segmentAngle / 2) + 90
-    // But CSS rotation is clockwise positive, and we've been accumulating rotation
-    
-    // Simplified: Calculate the final angle where winning segment aligns with top pointer
-    // We want the segment's center at the top (0°)
-    // Segment N center is at: (N + 0.5) * segmentAngle degrees from start
-    // To bring it to top, we rotate by: 360 - (N + 0.5) * segmentAngle + small offset
-    
+    // Calculate the final angle where winning segment aligns with top pointer
     const targetAngleWithinCircle = 360 - ((winningIndex + 0.5) * segmentAngle)
     
     // Add 5-8 full rotations for dramatic effect
@@ -79,14 +76,19 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
 
     setRotation(totalRotation)
 
-    // STEP 3: Wait for animation to complete, then show the PRE-SELECTED result
+    // STEP 3: Set timeout matching CSS transition duration to reveal result
     spinTimeoutRef.current = setTimeout(() => {
-      if (!mountedRef.current) return
+      console.log('[v0] Spin timeout fired, revealing result')
       
-      setIsSpinning(false)
-      // Display the SAME category we calculated rotation for - guaranteed sync
-      setSelectedCategory(winningCategory.name)
-      setShowResult(true)
+      // Use the ref value (survives re-renders) 
+      const categoryToShow = pendingCategoryRef.current
+      
+      if (categoryToShow) {
+        console.log('[v0] Setting selectedCategory to:', categoryToShow)
+        setIsSpinning(false)
+        setSelectedCategory(categoryToShow)
+        setShowResult(true)
+      }
     }, SPIN_DURATION_MS)
   }, [isSpinning, rotation])
 
