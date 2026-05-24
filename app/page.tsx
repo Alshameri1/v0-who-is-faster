@@ -4,6 +4,7 @@ import { ChallengeHero } from '@/components/challenge-hero'
 import { PopupProvider } from '@/contexts/popup-context'
 import { InfoModal } from '@/components/info-modal'
 import { SetupModal } from '@/components/setup-modal'
+import { PostSetupModal } from '@/components/post-setup-modal'
 import { Toaster } from 'sonner'
 
 export default function Page() {
@@ -15,6 +16,7 @@ export default function Page() {
         {/* Modals */}
         <InfoModal />
         <SetupModal />
+        <PostSetupModal />
         
         {/* Toast notifications - RTL positioned */}
         <Toaster 

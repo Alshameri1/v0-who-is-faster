@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { usePopup } from '@/contexts/popup-context'
+import { usePopup, type GameSessionData } from '@/contexts/popup-context'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -61,7 +61,7 @@ const generateId = () => `player-${Date.now()}-${Math.random().toString(36).subs
  * Features: Team naming, player management, duplicate validation, round/timer config
  */
 export function SetupModal() {
-  const { activePopup, closePopup } = usePopup()
+  const { activePopup, closePopup, openPopup, setGameSession } = usePopup()
   const isOpen = activePopup === 'setup'
 
   // State management
@@ -226,16 +226,63 @@ export function SetupModal() {
       return
     }
 
-    // Success - proceed with game setup
+    // Generate unique game ID using crypto.randomUUID() with fallback
+    let gameId: string
+    if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+      gameId = window.crypto.randomUUID()
+    } else {
+      // Fallback for older browsers
+      gameId = 'game-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9)
+    }
+
+    // Prepare game session data
+    const gameSessionData: GameSessionData = {
+      gameId,
+      team1Data: {
+        id: teams[0].id,
+        name: teams[0].name,
+        players: teams[0].players.map(p => ({ id: p.id, name: p.name.trim() })),
+      },
+      team2Data: {
+        id: teams[1].id,
+        name: teams[1].name,
+        players: teams[1].players.map(p => ({ id: p.id, name: p.name.trim() })),
+      },
+      rounds: parseInt(rounds),
+      timePerPlayer: parseInt(timePerPlayer),
+      isOrganizerView: true,
+      createdAt: new Date().toISOString(),
+    }
+
+    // Save to localStorage (with SSR safety check)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('game_session_data', JSON.stringify(gameSessionData))
+      } catch (error) {
+        console.error('Failed to save game session:', error)
+        toast.error('خطأ في حفظ البيانات', {
+          description: 'تعذر حفظ بيانات اللعبة',
+          duration: 4000,
+        })
+        return
+      }
+    }
+
+    // Update context with game session
+    setGameSession(gameSessionData)
+
+    // Success toast
     toast.success('تم إعداد اللعبة بنجاح!', {
       description: `${teams[0].players.length + teams[1].players.length} متسابقين - ${rounds} جولات`,
       duration: 3000,
     })
 
-    // Here you would typically navigate to the game or pass the config
-    console.log('Game Config:', { teams, rounds, timePerPlayer })
+    // Close setup modal and open post-setup modal
     closePopup()
-  }, [teams, rounds, timePerPlayer, closePopup])
+    setTimeout(() => {
+      openPopup('post-setup')
+    }, 150)
+  }, [teams, rounds, timePerPlayer, closePopup, openPopup, setGameSession])
 
   // Color classes for teams
   const teamColors = {
