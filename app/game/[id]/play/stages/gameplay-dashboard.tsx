@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Check, SkipForward, Clock } from 'lucide-react'
+import { Check, SkipForward, Clock, Menu } from 'lucide-react'
 import type { GameSessionData } from '@/contexts/popup-context'
+import { PauseMenu } from '../components/pause-menu'
 
 interface GamePlayState {
   currentRound: number
@@ -24,6 +25,8 @@ interface GameplayDashboardProps {
   onCorrectAnswer: () => void
   onSkip: () => void
   onRoundEnd: (winningTeam: 1 | 2) => void
+  onRestart: () => void
+  isTieBreaker?: boolean
 }
 
 // Mock image URLs for dynamic loading
@@ -44,37 +47,72 @@ export function GameplayDashboard({
   onCorrectAnswer,
   onSkip,
   onRoundEnd,
+  onRestart,
+  isTieBreaker = false,
 }: GameplayDashboardProps) {
-  // Timer state - milliseconds for precision
-  const [timeLeftMs, setTimeLeftMs] = useState(sessionData.timePerPlayer * 1000)
-  const [isTimerRunning, setIsTimerRunning] = useState(true)
+  // Dual independent timers - milliseconds for precision
+  const [team1TimeMs, setTeam1TimeMs] = useState(sessionData.timePerPlayer * 1000)
+  const [team2TimeMs, setTeam2TimeMs] = useState(sessionData.timePerPlayer * 1000)
+  const [isPaused, setIsPaused] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   
   // Ref for precise interval timing
   const lastTickRef = useRef<number>(Date.now())
   const animationFrameRef = useRef<number | null>(null)
+  const roundEndedRef = useRef(false)
+
+  // Get current active timer based on turn
+  const activeTimeMs = playState.currentTeamTurn === 1 ? team1TimeMs : team2TimeMs
+
+  // Pause when menu opens
+  useEffect(() => {
+    if (isMenuOpen) {
+      setIsPaused(true)
+    }
+  }, [isMenuOpen])
+
+  // Handle menu close - resume timer
+  const handleMenuClose = useCallback(() => {
+    setIsMenuOpen(false)
+    setIsPaused(false)
+  }, [])
+
+  // Handle round end when timer hits 0
+  useEffect(() => {
+    if (team1TimeMs <= 0 && !roundEndedRef.current) {
+      roundEndedRef.current = true
+      onRoundEnd(2) // Team 1's timer hit 0 - Team 2 wins
+    }
+    if (team2TimeMs <= 0 && !roundEndedRef.current) {
+      roundEndedRef.current = true
+      onRoundEnd(1) // Team 2's timer hit 0 - Team 1 wins
+    }
+  }, [team1TimeMs, team2TimeMs, onRoundEnd])
 
   // Precision countdown using requestAnimationFrame
   useEffect(() => {
-    if (!isTimerRunning || timeLeftMs <= 0) return
+    if (isPaused || roundEndedRef.current) return
 
     const tick = () => {
+      if (roundEndedRef.current) return
+      
       const now = Date.now()
       const delta = now - lastTickRef.current
       lastTickRef.current = now
 
-      setTimeLeftMs(prev => {
-        const newTime = prev - delta
-        if (newTime <= 0) {
-          setIsTimerRunning(false)
-          // Team whose turn it is loses when timer hits 0
-          // Winning team is the OTHER team
-          const winningTeam: 1 | 2 = playState.currentTeamTurn === 1 ? 2 : 1
-          onRoundEnd(winningTeam)
-          return 0
-        }
-        return newTime
-      })
+      // Only decrement the active team's timer
+      if (playState.currentTeamTurn === 1) {
+        setTeam1TimeMs(prev => {
+          const newTime = prev - delta
+          return Math.max(0, newTime)
+        })
+      } else {
+        setTeam2TimeMs(prev => {
+          const newTime = prev - delta
+          return Math.max(0, newTime)
+        })
+      }
 
       animationFrameRef.current = requestAnimationFrame(tick)
     }
@@ -87,7 +125,7 @@ export function GameplayDashboard({
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [isTimerRunning, playState.currentTeamTurn, onRoundEnd])
+  }, [isPaused, playState.currentTeamTurn])
 
   // Change image to a random different one
   const changeImage = useCallback(() => {
@@ -106,12 +144,16 @@ export function GameplayDashboard({
     onCorrectAnswer()
   }, [changeImage, onCorrectAnswer])
 
-  // Handle skip - subtract 5 seconds penalty, change image, keep same turn
+  // Handle skip - subtract 5 seconds penalty from ACTIVE team's timer, toggle turn
   const handleSkip = useCallback(() => {
-    setTimeLeftMs(prev => Math.max(0, prev - 5000)) // -5 second penalty
+    if (playState.currentTeamTurn === 1) {
+      setTeam1TimeMs(prev => Math.max(0, prev - 5000))
+    } else {
+      setTeam2TimeMs(prev => Math.max(0, prev - 5000))
+    }
     changeImage()
     onSkip()
-  }, [changeImage, onSkip])
+  }, [changeImage, onSkip, playState.currentTeamTurn])
 
   // Format time display (show seconds with one decimal)
   const formatTime = (ms: number) => {
@@ -121,81 +163,147 @@ export function GameplayDashboard({
     return `${seconds}.${tenths}`
   }
 
-  // Time warning states
-  const timeSeconds = timeLeftMs / 1000
-  const showTimeWarning = timeSeconds <= 10
-  const showTimeCritical = timeSeconds <= 5
+  // Time warning states for each team
+  const team1Seconds = team1TimeMs / 1000
+  const team2Seconds = team2TimeMs / 1000
+  const team1Warning = team1Seconds <= 10
+  const team1Critical = team1Seconds <= 5
+  const team2Warning = team2Seconds <= 10
+  const team2Critical = team2Seconds <= 5
 
   // Get current matched players
   const { team1Player, team2Player } = playState.matchedPlayers
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#0c1628]">
-      {/* Miniaturized Header - Team scores */}
-      <header className="flex-shrink-0 px-4 py-2 md:px-6 md:py-3">
+      {/* Hamburger Menu Button */}
+      <button
+        onClick={() => setIsMenuOpen(true)}
+        className="absolute top-4 left-4 z-50 p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 transition-all duration-200"
+        aria-label="قائمة الإيقاف"
+      >
+        <Menu className="w-6 h-6 text-white" />
+      </button>
+
+      {/* Pause Menu Sidebar */}
+      <PauseMenu
+        isOpen={isMenuOpen}
+        onClose={handleMenuClose}
+        onRestart={onRestart}
+        gameId={sessionData.gameId}
+      />
+
+      {/* Tie-breaker indicator */}
+      {isTieBreaker && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40">
+          <div className="px-4 py-2 bg-yellow-500/20 border border-yellow-500 rounded-full animate-pulse">
+            <span className="text-yellow-400 font-bold text-sm">الجولة الحاسمة الفاصلة</span>
+          </div>
+        </div>
+      )}
+
+      {/* Miniaturized Header - Dual Team Timers */}
+      <header className="flex-shrink-0 px-4 py-2 md:px-6 md:py-3 mt-14">
         <div className="flex items-center justify-between w-full gap-2 md:gap-4">
-          {/* Team 1 Score - Compact */}
+          {/* Team 1 Score & Timer */}
           <div 
-            className={`flex items-center gap-2 md:gap-3 px-3 py-1.5 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
+            className={`flex flex-col items-center gap-1 px-3 py-2 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
               playState.currentTeamTurn === 1 
-                ? 'bg-cyan-500/20 border border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' 
-                : 'bg-cyan-500/10 border border-cyan-400/30'
+                ? 'bg-cyan-500/20 border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)]' 
+                : 'bg-cyan-500/10 border border-cyan-400/30 opacity-60'
             }`}
           >
             <span className={`text-xs md:text-sm font-medium ${playState.currentTeamTurn === 1 ? 'text-cyan-300' : 'text-cyan-400/60'}`}>
               {sessionData.team1Data.name}
             </span>
-            <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 1 ? 'text-white' : 'text-white/60'}`}>
-              {playState.team1Score}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 1 ? 'text-white' : 'text-white/60'}`}>
+                {playState.team1Score}
+              </span>
+              {/* Team 1 Timer */}
+              <div 
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${
+                  team1Critical 
+                    ? 'bg-red-500/30 animate-pulse' 
+                    : team1Warning
+                      ? 'bg-yellow-500/20'
+                      : 'bg-white/10'
+                }`}
+              >
+                <Clock className={`w-3 h-3 ${
+                  team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-white/60'
+                }`} />
+                <span 
+                  className={`text-sm font-mono font-bold tabular-nums ${
+                    team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-white/80'
+                  }`}
+                >
+                  {formatTime(team1TimeMs)}
+                </span>
+              </div>
+            </div>
             {playState.currentTeamTurn === 1 && team1Player && (
-              <span className="hidden sm:inline text-xs text-cyan-300 border-r border-cyan-400/30 pr-2 mr-1">
+              <span className="text-xs text-cyan-300">
                 {team1Player.name}
               </span>
             )}
           </div>
 
-          {/* Center - Timer */}
-          <div 
-            className={`flex items-center gap-2 px-4 py-1.5 md:px-5 md:py-2 rounded-full transition-all duration-200 ${
-              showTimeCritical 
-                ? 'bg-red-500/30 border-2 border-red-500 animate-pulse' 
-                : showTimeWarning
-                  ? 'bg-yellow-500/20 border-2 border-yellow-500'
-                  : 'bg-white/10 border border-white/20'
-            }`}
-          >
-            <Clock className={`w-4 h-4 md:w-5 md:h-5 ${
-              showTimeCritical ? 'text-red-400' : showTimeWarning ? 'text-yellow-400' : 'text-white/60'
-            }`} />
-            <span 
-              className={`text-2xl md:text-3xl font-mono font-bold tabular-nums ${
-                showTimeCritical ? 'text-red-400' : showTimeWarning ? 'text-yellow-400' : 'text-white'
-              }`}
-            >
-              {formatTime(timeLeftMs)}
-            </span>
+          {/* Center - VS indicator */}
+          <div className="flex flex-col items-center">
+            <span className="text-white/40 text-xs font-bold">VS</span>
+            <div className="mt-1 flex items-center gap-1">
+              <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                playState.currentTeamTurn === 1 ? 'bg-cyan-400 animate-pulse' : 'bg-cyan-400/30'
+              }`} />
+              <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                playState.currentTeamTurn === 2 ? 'bg-red-400 animate-pulse' : 'bg-red-400/30'
+              }`} />
+            </div>
           </div>
 
-          {/* Team 2 Score - Compact */}
+          {/* Team 2 Score & Timer */}
           <div 
-            className={`flex items-center gap-2 md:gap-3 px-3 py-1.5 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
+            className={`flex flex-col items-center gap-1 px-3 py-2 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
               playState.currentTeamTurn === 2 
-                ? 'bg-red-500/20 border border-red-400 shadow-[0_0_15px_rgba(248,113,113,0.3)]' 
-                : 'bg-red-500/10 border border-red-400/30'
+                ? 'bg-red-500/20 border-2 border-red-400 shadow-[0_0_20px_rgba(248,113,113,0.4)]' 
+                : 'bg-red-500/10 border border-red-400/30 opacity-60'
             }`}
           >
-            {playState.currentTeamTurn === 2 && team2Player && (
-              <span className="hidden sm:inline text-xs text-red-300 border-l border-red-400/30 pl-2 ml-1">
-                {team2Player.name}
-              </span>
-            )}
             <span className={`text-xs md:text-sm font-medium ${playState.currentTeamTurn === 2 ? 'text-red-300' : 'text-red-400/60'}`}>
               {sessionData.team2Data.name}
             </span>
-            <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 2 ? 'text-white' : 'text-white/60'}`}>
-              {playState.team2Score}
-            </span>
+            <div className="flex items-center gap-2">
+              {/* Team 2 Timer */}
+              <div 
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${
+                  team2Critical 
+                    ? 'bg-red-500/30 animate-pulse' 
+                    : team2Warning
+                      ? 'bg-yellow-500/20'
+                      : 'bg-white/10'
+                }`}
+              >
+                <Clock className={`w-3 h-3 ${
+                  team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-white/60'
+                }`} />
+                <span 
+                  className={`text-sm font-mono font-bold tabular-nums ${
+                    team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-white/80'
+                  }`}
+                >
+                  {formatTime(team2TimeMs)}
+                </span>
+              </div>
+              <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 2 ? 'text-white' : 'text-white/60'}`}>
+                {playState.team2Score}
+              </span>
+            </div>
+            {playState.currentTeamTurn === 2 && team2Player && (
+              <span className="text-xs text-red-300">
+                {team2Player.name}
+              </span>
+            )}
           </div>
         </div>
 
@@ -240,6 +348,13 @@ export function GameplayDashboard({
               crossOrigin="anonymous"
             />
 
+            {/* Paused overlay */}
+            {isPaused && (
+              <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                <span className="text-2xl text-yellow-400 font-bold animate-pulse">اللعبة متوقفة مؤقتاً</span>
+              </div>
+            )}
+
             {/* Decorative corner accents */}
             <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-white/30 rounded-tr-lg pointer-events-none" />
             <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-white/30 rounded-tl-lg pointer-events-none" />
@@ -249,7 +364,7 @@ export function GameplayDashboard({
             {/* Round indicator overlay */}
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
               <span className="px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white/80 text-xs font-medium">
-                الجولة {playState.currentRound} / {sessionData.rounds}
+                {isTieBreaker ? 'جولة فاصلة' : `الجولة ${playState.currentRound} / ${sessionData.rounds}`}
               </span>
             </div>
           </div>
@@ -264,7 +379,8 @@ export function GameplayDashboard({
             {/* Skip button - 20% width */}
             <button
               onClick={handleSkip}
-              className="w-[20%] flex items-center justify-center gap-1 md:gap-2 py-3 md:py-4 bg-gradient-to-b from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 border border-gray-500/50 text-white text-sm md:text-lg font-bold rounded-xl md:rounded-2xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+              disabled={isPaused}
+              className="w-[20%] flex items-center justify-center gap-1 md:gap-2 py-3 md:py-4 bg-gradient-to-b from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-500/50 text-white text-sm md:text-lg font-bold rounded-xl md:rounded-2xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <SkipForward className="w-4 h-4 md:w-5 md:h-5" />
               <span className="hidden sm:inline">تجاوز</span>
@@ -274,7 +390,8 @@ export function GameplayDashboard({
             {/* Correct answer button - 80% width */}
             <button
               onClick={handleCorrect}
-              className="w-[80%] flex items-center justify-center gap-2 md:gap-3 py-3 md:py-4 bg-gradient-to-b from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white text-base md:text-xl font-bold rounded-xl md:rounded-2xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/30"
+              disabled={isPaused}
+              className="w-[80%] flex items-center justify-center gap-2 md:gap-3 py-3 md:py-4 bg-gradient-to-b from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-base md:text-xl font-bold rounded-xl md:rounded-2xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/30"
             >
               <Check className="w-5 h-5 md:w-6 md:h-6" />
               <span>إجابة صحيحة</span>

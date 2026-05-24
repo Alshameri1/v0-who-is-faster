@@ -8,9 +8,21 @@ import { FortuneWheel } from './stages/fortune-wheel'
 import { PlayerMatchup } from './stages/player-matchup'
 import { Countdown } from './stages/countdown'
 import { GameplayDashboard } from './stages/gameplay-dashboard'
+import { RoundWinnerOverlay } from './components/round-winner-overlay'
+import { GameOverScreen } from './components/game-over-screen'
+import { TieBreakerIntro } from './components/tie-breaker-intro'
 
 // Game state types
-type GameState = 'LOADING' | 'ROUND_INTRO' | 'WHEEL' | 'MATCHUP' | 'COUNTDOWN' | 'PLAYING' | 'ROUND_RESULT'
+type GameState = 
+  | 'LOADING' 
+  | 'ROUND_INTRO' 
+  | 'WHEEL' 
+  | 'MATCHUP' 
+  | 'COUNTDOWN' 
+  | 'PLAYING' 
+  | 'ROUND_RESULT'
+  | 'TIE_BREAKER_INTRO'
+  | 'GAME_OVER'
 
 // Extended game state with scores and current players
 interface GamePlayState {
@@ -29,6 +41,8 @@ interface GamePlayState {
   // Track used players within current cycle
   usedPlayersTeam1: string[]
   usedPlayersTeam2: string[]
+  // Tie-breaker mode
+  isTieBreaker: boolean
 }
 
 interface GamePlayClientProps {
@@ -57,6 +71,7 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
     playerPoolTeam2: [],
     usedPlayersTeam1: [],
     usedPlayersTeam2: [],
+    isTieBreaker: false,
   })
 
   // Initialize player pools when session data loads
@@ -180,53 +195,105 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
     setGameState('ROUND_RESULT')
   }, [])
 
-  // Proceed to next round or end game
-  const proceedAfterRoundResult = useCallback(() => {
+  // Handle round winner animation complete - proceed to next round or game over
+  const handleRoundResultComplete = useCallback(() => {
     if (!sessionData) return
 
-    if (playState.currentRound < sessionData.rounds) {
-      // Refill player pools for next round if needed
-      const team1Refill = refillPlayerPoolIfNeeded(
-        playState.playerPoolTeam1,
-        playState.usedPlayersTeam1,
-        sessionData.team1Data.players
-      )
-      const team2Refill = refillPlayerPoolIfNeeded(
-        playState.playerPoolTeam2,
-        playState.usedPlayersTeam2,
-        sessionData.team2Data.players
-      )
+    const newTeam1Score = playState.team1Score + (roundWinner === 1 ? 0 : 0) // Already updated in handleRoundEnd
+    const newTeam2Score = playState.team2Score + (roundWinner === 2 ? 0 : 0)
 
-      // Go to next round
-      setPlayState(prev => ({
-        ...prev,
-        currentRound: prev.currentRound + 1,
-        currentTeamTurn: 1,
-        selectedCategory: null,
-        matchedPlayers: { team1Player: null, team2Player: null },
-        playerPoolTeam1: team1Refill.pool,
-        playerPoolTeam2: team2Refill.pool,
-        usedPlayersTeam1: team1Refill.used,
-        usedPlayersTeam2: team2Refill.used,
-      }))
-      setRoundWinner(null)
-      setGameState('ROUND_INTRO')
-    } else {
-      // Game over - save final scores and navigate to results
-      if (typeof window !== 'undefined') {
-        const finalData = {
-          ...sessionData,
-          finalScores: {
-            team1: playState.team1Score + (roundWinner === 1 ? 1 : 0),
-            team2: playState.team2Score + (roundWinner === 2 ? 1 : 0),
-          },
-          completedAt: new Date().toISOString(),
-        }
-        localStorage.setItem('game_session_data', JSON.stringify(finalData))
-      }
-      router.push(`/game/${gameId}/result-panel`)
+    // Check if this was a tie-breaker round
+    if (playState.isTieBreaker) {
+      // Tie-breaker complete - go to game over
+      setGameState('GAME_OVER')
+      return
     }
-  }, [sessionData, playState, roundWinner, refillPlayerPoolIfNeeded, gameId, router])
+
+    // Check if all rounds completed
+    if (playState.currentRound >= sessionData.rounds) {
+      // All rounds done - check for tie or winner
+      if (playState.team1Score === playState.team2Score) {
+        // It's a tie! Trigger tie-breaker
+        setGameState('TIE_BREAKER_INTRO')
+      } else {
+        // Clear winner - go to game over
+        setGameState('GAME_OVER')
+      }
+      return
+    }
+
+    // More rounds to play - proceed to next round
+    const team1Refill = refillPlayerPoolIfNeeded(
+      playState.playerPoolTeam1,
+      playState.usedPlayersTeam1,
+      sessionData.team1Data.players
+    )
+    const team2Refill = refillPlayerPoolIfNeeded(
+      playState.playerPoolTeam2,
+      playState.usedPlayersTeam2,
+      sessionData.team2Data.players
+    )
+
+    setPlayState(prev => ({
+      ...prev,
+      currentRound: prev.currentRound + 1,
+      currentTeamTurn: 1,
+      selectedCategory: null,
+      matchedPlayers: { team1Player: null, team2Player: null },
+      playerPoolTeam1: team1Refill.pool,
+      playerPoolTeam2: team2Refill.pool,
+      usedPlayersTeam1: team1Refill.used,
+      usedPlayersTeam2: team2Refill.used,
+    }))
+    setRoundWinner(null)
+    setGameState('ROUND_INTRO')
+  }, [sessionData, playState, roundWinner, refillPlayerPoolIfNeeded])
+
+  // Handle tie-breaker intro complete
+  const handleTieBreakerIntroComplete = useCallback(() => {
+    if (!sessionData) return
+
+    // Setup tie-breaker round
+    setPlayState(prev => ({
+      ...prev,
+      currentRound: prev.currentRound + 1,
+      currentTeamTurn: 1,
+      selectedCategory: null,
+      matchedPlayers: { team1Player: null, team2Player: null },
+      isTieBreaker: true,
+    }))
+    setRoundWinner(null)
+    setGameState('WHEEL')
+  }, [sessionData])
+
+  // Handle play again - full reset
+  const handlePlayAgain = useCallback(() => {
+    if (!sessionData) return
+
+    setPlayState({
+      currentRound: 1,
+      team1Score: 0,
+      team2Score: 0,
+      currentTeamTurn: 1,
+      selectedCategory: null,
+      matchedPlayers: {
+        team1Player: null,
+        team2Player: null,
+      },
+      playerPoolTeam1: sessionData.team1Data.players.map(p => p.id),
+      playerPoolTeam2: sessionData.team2Data.players.map(p => p.id),
+      usedPlayersTeam1: [],
+      usedPlayersTeam2: [],
+      isTieBreaker: false,
+    })
+    setRoundWinner(null)
+    setGameState('ROUND_INTRO')
+  }, [sessionData])
+
+  // Handle restart from pause menu
+  const handleRestart = useCallback(() => {
+    handlePlayAgain()
+  }, [handlePlayAgain])
 
   // Loading state
   if (gameState === 'LOADING') {
@@ -261,52 +328,33 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
 
   if (!sessionData) return null
 
-  // Round result overlay
+  // Game Over screen
+  if (gameState === 'GAME_OVER') {
+    return (
+      <GameOverScreen
+        sessionData={sessionData}
+        team1Score={playState.team1Score}
+        team2Score={playState.team2Score}
+        onPlayAgain={handlePlayAgain}
+      />
+    )
+  }
+
+  // Tie-breaker intro
+  if (gameState === 'TIE_BREAKER_INTRO') {
+    return <TieBreakerIntro onComplete={handleTieBreakerIntroComplete} />
+  }
+
+  // Round result overlay with animation
   if (gameState === 'ROUND_RESULT' && roundWinner) {
     const winnerName = roundWinner === 1 ? sessionData.team1Data.name : sessionData.team2Data.name
-    const winnerColor = roundWinner === 1 ? 'cyan' : 'red'
     
     return (
-      <div className="h-screen bg-[#0c1628] flex items-center justify-center overflow-hidden">
-        <div className="text-center animate-in fade-in zoom-in duration-500">
-          <div 
-            className={`text-6xl md:text-8xl font-black mb-4 ${
-              roundWinner === 1 ? 'text-cyan-400' : 'text-red-400'
-            }`}
-            style={{ textShadow: `0 0 40px ${winnerColor === 'cyan' ? 'rgba(34,211,238,0.5)' : 'rgba(248,113,113,0.5)'}` }}
-          >
-            🏆
-          </div>
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            انتهت الجولة!
-          </h2>
-          <p className={`text-2xl md:text-3xl font-bold ${
-            roundWinner === 1 ? 'text-cyan-400' : 'text-red-400'
-          }`}>
-            فاز {winnerName}
-          </p>
-          
-          {/* Score display */}
-          <div className="mt-8 flex items-center justify-center gap-8">
-            <div className="text-center">
-              <p className="text-cyan-400 text-sm mb-1">{sessionData.team1Data.name}</p>
-              <p className="text-4xl font-black text-white">{playState.team1Score}</p>
-            </div>
-            <div className="text-white/30 text-2xl">-</div>
-            <div className="text-center">
-              <p className="text-red-400 text-sm mb-1">{sessionData.team2Data.name}</p>
-              <p className="text-4xl font-black text-white">{playState.team2Score}</p>
-            </div>
-          </div>
-
-          <button
-            onClick={proceedAfterRoundResult}
-            className="mt-8 px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xl font-bold rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-500/30"
-          >
-            {playState.currentRound < sessionData.rounds ? 'الجولة التالية' : 'عرض النتائج'}
-          </button>
-        </div>
-      </div>
+      <RoundWinnerOverlay
+        winnerName={winnerName}
+        winnerTeam={roundWinner}
+        onComplete={handleRoundResultComplete}
+      />
     )
   }
 
@@ -316,7 +364,7 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
       {gameState === 'ROUND_INTRO' && (
         <RoundIntro 
           roundNumber={playState.currentRound} 
-          totalRounds={sessionData.rounds}
+          totalRounds={playState.isTieBreaker ? playState.currentRound : sessionData.rounds}
           onComplete={handleRoundIntroComplete} 
         />
       )}
@@ -346,6 +394,8 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
           onCorrectAnswer={handleCorrectAnswer}
           onSkip={handleSkip}
           onRoundEnd={handleRoundEnd}
+          onRestart={handleRestart}
+          isTieBreaker={playState.isTieBreaker}
         />
       )}
     </div>
