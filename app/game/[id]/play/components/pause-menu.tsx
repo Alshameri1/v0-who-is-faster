@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { 
   Play, 
   RotateCcw, 
@@ -21,6 +21,29 @@ interface PauseMenuProps {
 
 export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps) {
   const router = useRouter()
+  // Internal state for animation control - delays unmount for exit animation
+  const [shouldRender, setShouldRender] = useState(false)
+  const [isAnimating, setIsAnimating] = useState(false)
+
+  // Handle mount/unmount with animation delays
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true)
+      // Small delay to ensure DOM is ready before animating
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsAnimating(true)
+        })
+      })
+    } else {
+      setIsAnimating(false)
+      // Wait for exit animation to complete before unmounting
+      const timer = setTimeout(() => {
+        setShouldRender(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen])
 
   // Copy result panel URL to clipboard
   const handleCopyQR = useCallback(async () => {
@@ -52,26 +75,30 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
     onClose()
   }, [onRestart, onClose])
 
-  if (!isOpen) return null
+  if (!shouldRender) return null
 
   return (
     <>
-      {/* Backdrop with blur */}
+      {/* Backdrop with smooth fade and blur */}
       <div 
-        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md transition-opacity duration-300"
+        className={`fixed inset-0 z-50 bg-black/60 transition-all duration-300 ease-in-out ${
+          isAnimating 
+            ? 'opacity-100 backdrop-blur-md' 
+            : 'opacity-0 backdrop-blur-none'
+        }`}
         onClick={onClose}
       />
 
-      {/* Sidebar */}
+      {/* Sidebar with ultra-smooth slide transition */}
       <div 
-        className={`fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-gradient-to-b from-[#0f1f35] to-[#0c1628] border-l border-white/10 shadow-2xl transform transition-transform duration-300 ease-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-gradient-to-b from-[#0f1f35] to-[#0c1628] border-l border-white/10 shadow-2xl transition-transform duration-300 ease-in-out ${
+          isAnimating ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+          className="absolute top-4 left-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors duration-200"
           aria-label="إغلاق"
         >
           <X className="w-5 h-5 text-white" />
