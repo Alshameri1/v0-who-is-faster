@@ -37,73 +37,66 @@ export function PlayerMatchup({
   const [selectedPlayer2, setSelectedPlayer2] = useState<{ id: string; name: string } | null>(null)
   const [isLocked, setIsLocked] = useState(false)
 
-  // Refs for interval/timeout cleanup - CRITICAL for preventing leaks
+  // Refs for cleanup
   const shuffleIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lockTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
-  // Ref to track if effect has already run (prevents double-execution in StrictMode)
-  const hasStartedRef = useRef(false)
-  
-  // Refs to store final selected players (survives re-renders)
-  const finalPlayer1Ref = useRef<{ id: string; name: string } | null>(null)
-  const finalPlayer2Ref = useRef<{ id: string; name: string } | null>(null)
+  const mountedRef = useRef(true)
 
-  // Compute available players for display purposes
-  const availablePlayers1 = team1.players.filter(p => !usedPlayersTeam1.includes(p.id))
-  const availablePlayers2 = team2.players.filter(p => !usedPlayersTeam2.includes(p.id))
-  const displayAvailable1 = availablePlayers1.length > 0 ? availablePlayers1 : team1.players
-  const displayAvailable2 = availablePlayers2.length > 0 ? availablePlayers2 : team2.players
+  // Smart player selection: Get available players from pool (not yet used in current cycle)
+  const getAvailablePlayers = useCallback((
+    allPlayers: { id: string; name: string }[],
+    usedPlayerIds: string[]
+  ): { id: string; name: string }[] => {
+    const available = allPlayers.filter(p => !usedPlayerIds.includes(p.id))
+    // If all players used (shouldn't happen with proper pool refill), return all players
+    return available.length > 0 ? available : allPlayers
+  }, [])
 
-  // THE ATOMIC 5-SECOND PARALLEL CONTROL LOOP - runs ONCE on mount
+  const availablePlayers1 = getAvailablePlayers(team1.players, usedPlayersTeam1)
+  const availablePlayers2 = getAvailablePlayers(team2.players, usedPlayersTeam2)
+
+  // Unified 5-second shuffle effect with precise timing
   useEffect(() => {
-    // Guard: Only run once (prevents StrictMode double-execution)
-    if (hasStartedRef.current) return
-    hasStartedRef.current = true
+    if (!isShuffling) return
 
-    // PRE-SELECT the final players FIRST (from available pool - anti-repeat)
-    const pool1 = team1.players.filter(p => !usedPlayersTeam1.includes(p.id))
-    const pool2 = team2.players.filter(p => !usedPlayersTeam2.includes(p.id))
-    const finalPool1 = pool1.length > 0 ? pool1 : team1.players
-    const finalPool2 = pool2.length > 0 ? pool2 : team2.players
-    
-    // Store final players in refs (survives re-renders)
-    finalPlayer1Ref.current = finalPool1[Math.floor(Math.random() * finalPool1.length)]
-    finalPlayer2Ref.current = finalPool2[Math.floor(Math.random() * finalPool2.length)]
+    mountedRef.current = true
 
-    // Start rapid 50ms cycling interval for visual shuffle effect
+    // PRE-SELECT the final players FIRST (from available pool only - anti-repeat)
+    const finalPlayer1 = availablePlayers1[Math.floor(Math.random() * availablePlayers1.length)]
+    const finalPlayer2 = availablePlayers2[Math.floor(Math.random() * availablePlayers2.length)]
+
+    // Start rapid cycling every 50ms - shows random names from ALL players for visual effect
     shuffleIntervalRef.current = setInterval(() => {
+      if (!mountedRef.current) return
+      
       const randomIndex1 = Math.floor(Math.random() * team1.players.length)
       const randomIndex2 = Math.floor(Math.random() * team2.players.length)
       setDisplayName1(team1.players[randomIndex1].name)
       setDisplayName2(team2.players[randomIndex2].name)
     }, SHUFFLE_INTERVAL_MS)
 
-    // THE HARD STOP LOCK - exactly 5000ms timeout
+    // Unified 5000ms timeout - EXACT timing
     lockTimeoutRef.current = setTimeout(() => {
-      // 1. IMMEDIATELY clear the interval first
+      if (!mountedRef.current) return
+
+      // IMMEDIATELY clear the interval
       if (shuffleIntervalRef.current) {
         clearInterval(shuffleIntervalRef.current)
         shuffleIntervalRef.current = null
       }
 
-      // 2. Lock onto pre-selected final players from refs
-      const final1 = finalPlayer1Ref.current
-      const final2 = finalPlayer2Ref.current
-      
-      if (final1 && final2) {
-        setDisplayName1(final1.name)
-        setDisplayName2(final2.name)
-        setSelectedPlayer1(final1)
-        setSelectedPlayer2(final2)
-      }
-      
-      // 3. Stop shuffling and unlock the continue button
+      // Lock onto pre-selected final players
+      setDisplayName1(finalPlayer1.name)
+      setDisplayName2(finalPlayer2.name)
+      setSelectedPlayer1(finalPlayer1)
+      setSelectedPlayer2(finalPlayer2)
       setIsShuffling(false)
       setIsLocked(true)
     }, SHUFFLE_DURATION_MS)
 
-    // STRICT RETURN CLEANUP - prevents memory leaks
+    // Cleanup function
     return () => {
+      mountedRef.current = false
       if (shuffleIntervalRef.current) {
         clearInterval(shuffleIntervalRef.current)
         shuffleIntervalRef.current = null
@@ -113,8 +106,16 @@ export function PlayerMatchup({
         lockTimeoutRef.current = null
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Empty deps - runs ONCE on mount only
+  }, [isShuffling, team1.players, team2.players, availablePlayers1, availablePlayers2])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      if (shuffleIntervalRef.current) clearInterval(shuffleIntervalRef.current)
+      if (lockTimeoutRef.current) clearTimeout(lockTimeoutRef.current)
+    }
+  }, [])
 
   const handleContinue = useCallback(() => {
     if (selectedPlayer1 && selectedPlayer2) {
@@ -131,11 +132,11 @@ export function PlayerMatchup({
       {/* Available players indicator */}
       <div className="flex items-center justify-center gap-6 mb-6 text-xs md:text-sm">
         <span className="text-cyan-400/70">
-          متبقي: {displayAvailable1.length} من {team1.players.length}
+          متبقي: {availablePlayers1.length} من {team1.players.length}
         </span>
         <span className="text-white/30">|</span>
         <span className="text-red-400/70">
-          متبقي: {displayAvailable2.length} من {team2.players.length}
+          متبقي: {availablePlayers2.length} من {team2.players.length}
         </span>
       </div>
 
