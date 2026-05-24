@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { 
   Play, 
   RotateCcw, 
@@ -24,12 +24,14 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
   // Internal state for animation control - delays unmount for exit animation
   const [shouldRender, setShouldRender] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
+  const backdropRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
-  // Handle mount/unmount with animation delays
+  // Handle mount/unmount with animation delays for ultra-smooth transitions
   useEffect(() => {
     if (isOpen) {
       setShouldRender(true)
-      // Small delay to ensure DOM is ready before animating
+      // Use double RAF for guaranteed DOM paint before animation
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true)
@@ -37,10 +39,10 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
       })
     } else {
       setIsAnimating(false)
-      // Wait for exit animation to complete before unmounting
+      // Wait for exit animation to complete before unmounting (matches duration-500)
       const timer = setTimeout(() => {
         setShouldRender(false)
-      }, 300)
+      }, 500)
       return () => clearTimeout(timer)
     }
   }, [isOpen])
@@ -79,26 +81,37 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
 
   return (
     <>
-      {/* Backdrop with smooth fade and blur */}
+      {/* Backdrop with ultra-smooth fade and blur transition */}
       <div 
-        className={`fixed inset-0 z-50 bg-black/60 transition-all duration-300 ease-in-out ${
-          isAnimating 
-            ? 'opacity-100 backdrop-blur-md' 
-            : 'opacity-0 backdrop-blur-none'
-        }`}
+        ref={backdropRef}
+        className={`
+          fixed inset-0 z-50 
+          transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
+          ${isAnimating 
+            ? 'bg-black/70 backdrop-blur-md opacity-100' 
+            : 'bg-black/0 backdrop-blur-none opacity-0'
+          }
+        `}
         onClick={onClose}
+        aria-hidden="true"
       />
 
-      {/* Sidebar with ultra-smooth slide transition */}
+      {/* Sidebar Panel with ultra-smooth slide transition - RTL (slides from left) */}
       <div 
-        className={`fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-gradient-to-b from-[#0f1f35] to-[#0c1628] border-l border-white/10 shadow-2xl transition-transform duration-300 ease-in-out ${
-          isAnimating ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        dir="rtl"
+        ref={panelRef}
+        className={`
+          fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] 
+          bg-gradient-to-b from-[#0f1f35] to-[#0c1628] 
+          border-r border-white/10 shadow-2xl
+          transform transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
+          ${isAnimating ? 'translate-x-0' : '-translate-x-full'}
+        `}
       >
-        {/* Close button */}
+        {/* Close button - positioned for RTL */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors duration-200"
+          className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-300 hover:scale-110"
           aria-label="إغلاق"
         >
           <X className="w-5 h-5 text-white" />
@@ -114,12 +127,18 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
           </div>
         </div>
 
-        {/* Menu Items */}
+        {/* Menu Items with staggered animation */}
         <nav className="px-4 space-y-3">
           {/* Resume */}
           <button
             onClick={onClose}
-            className="w-full flex items-center gap-4 px-5 py-4 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-2xl transition-all duration-200 group"
+            className={`
+              w-full flex items-center gap-4 px-5 py-4 
+              bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-2xl 
+              transition-all duration-300 group hover:scale-[1.02]
+              transform ${isAnimating ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'}
+            `}
+            style={{ transitionDelay: isAnimating ? '100ms' : '0ms' }}
           >
             <div className="p-2 bg-green-500/30 rounded-xl group-hover:bg-green-500/50 transition-colors">
               <Play className="w-6 h-6 text-green-400" />
@@ -133,7 +152,13 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
           {/* Restart */}
           <button
             onClick={handleRestart}
-            className="w-full flex items-center gap-4 px-5 py-4 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-2xl transition-all duration-200 group"
+            className={`
+              w-full flex items-center gap-4 px-5 py-4 
+              bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-2xl 
+              transition-all duration-300 group hover:scale-[1.02]
+              transform ${isAnimating ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'}
+            `}
+            style={{ transitionDelay: isAnimating ? '150ms' : '0ms' }}
           >
             <div className="p-2 bg-blue-500/30 rounded-xl group-hover:bg-blue-500/50 transition-colors">
               <RotateCcw className="w-6 h-6 text-blue-400" />
@@ -147,7 +172,13 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
           {/* QR / Audience Screen */}
           <button
             onClick={handleCopyQR}
-            className="w-full flex items-center gap-4 px-5 py-4 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-2xl transition-all duration-200 group"
+            className={`
+              w-full flex items-center gap-4 px-5 py-4 
+              bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-2xl 
+              transition-all duration-300 group hover:scale-[1.02]
+              transform ${isAnimating ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'}
+            `}
+            style={{ transitionDelay: isAnimating ? '200ms' : '0ms' }}
           >
             <div className="p-2 bg-purple-500/30 rounded-xl group-hover:bg-purple-500/50 transition-colors">
               <QrCode className="w-6 h-6 text-purple-400" />
@@ -161,7 +192,13 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
           {/* Management Panel */}
           <button
             onClick={handleManagementPanel}
-            className="w-full flex items-center gap-4 px-5 py-4 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-2xl transition-all duration-200 group"
+            className={`
+              w-full flex items-center gap-4 px-5 py-4 
+              bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-2xl 
+              transition-all duration-300 group hover:scale-[1.02]
+              transform ${isAnimating ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'}
+            `}
+            style={{ transitionDelay: isAnimating ? '250ms' : '0ms' }}
           >
             <div className="p-2 bg-cyan-500/30 rounded-xl group-hover:bg-cyan-500/50 transition-colors">
               <Settings className="w-6 h-6 text-cyan-400" />
@@ -175,7 +212,13 @@ export function PauseMenu({ isOpen, onClose, onRestart, gameId }: PauseMenuProps
           {/* Leave Game */}
           <button
             onClick={handleLeaveGame}
-            className="w-full flex items-center gap-4 px-5 py-4 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-2xl transition-all duration-200 group"
+            className={`
+              w-full flex items-center gap-4 px-5 py-4 
+              bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-2xl 
+              transition-all duration-300 group hover:scale-[1.02]
+              transform ${isAnimating ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'}
+            `}
+            style={{ transitionDelay: isAnimating ? '300ms' : '0ms' }}
           >
             <div className="p-2 bg-red-500/30 rounded-xl group-hover:bg-red-500/50 transition-colors">
               <Home className="w-6 h-6 text-red-400" />

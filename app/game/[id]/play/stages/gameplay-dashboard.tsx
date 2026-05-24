@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Check, SkipForward, Clock, Menu } from 'lucide-react'
+import { Check, SkipForward, Menu, Timer } from 'lucide-react'
 import type { GameSessionData } from '@/contexts/popup-context'
 import { PauseMenu } from '../components/pause-menu'
 
@@ -61,9 +61,6 @@ export function GameplayDashboard({
   const lastTickRef = useRef<number>(Date.now())
   const animationFrameRef = useRef<number | null>(null)
   const roundEndedRef = useRef(false)
-
-  // Get current active timer based on turn
-  const activeTimeMs = playState.currentTeamTurn === 1 ? team1TimeMs : team2TimeMs
 
   // Pause when menu opens
   useEffect(() => {
@@ -175,11 +172,11 @@ export function GameplayDashboard({
   const { team1Player, team2Player } = playState.matchedPlayers
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#0c1628]">
-      {/* Hamburger Menu Button */}
+    <div dir="rtl" className="h-screen flex flex-col overflow-hidden bg-[#0c1628]">
+      {/* Hamburger Menu Button - RTL positioned */}
       <button
         onClick={() => setIsMenuOpen(true)}
-        className="absolute top-4 left-4 z-50 p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 transition-all duration-200"
+        className="absolute top-4 right-4 z-50 p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 transition-all duration-200"
         aria-label="قائمة الإيقاف"
       >
         <Menu className="w-6 h-6 text-white" />
@@ -193,133 +190,184 @@ export function GameplayDashboard({
         gameId={sessionData.gameId}
       />
 
-      {/* Tie-breaker indicator */}
-      {isTieBreaker && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40">
-          <div className="px-4 py-2 bg-yellow-500/20 border border-yellow-500 rounded-full animate-pulse">
-            <span className="text-yellow-400 font-bold text-sm">الجولة الحاسمة الفاصلة</span>
+      {/* Header with Center Active Turn Tag */}
+      <header className="flex-shrink-0 px-4 py-3 md:px-6 md:py-4 mt-12">
+        {/* Tie-breaker indicator - above turn tag */}
+        {isTieBreaker && (
+          <div className="flex justify-center mb-2">
+            <div className="px-4 py-1.5 bg-yellow-500/20 border border-yellow-500 rounded-full animate-pulse">
+              <span className="text-yellow-400 font-bold text-sm">الجولة الحاسمة الفاصلة</span>
+            </div>
+          </div>
+        )}
+
+        {/* CENTER ACTIVE TURN TAG - Bold, Highly Stylish */}
+        <div className="flex justify-center mb-4">
+          <div 
+            className={`
+              relative px-6 py-3 rounded-2xl font-bold text-lg md:text-xl
+              transition-all duration-500 ease-out
+              ${playState.currentTeamTurn === 1 
+                ? 'bg-gradient-to-r from-cyan-500/30 to-cyan-400/20 border-2 border-cyan-400 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.5),0_0_60px_rgba(34,211,238,0.2)]' 
+                : 'bg-gradient-to-r from-red-500/30 to-red-400/20 border-2 border-red-400 text-red-100 shadow-[0_0_30px_rgba(248,113,113,0.5),0_0_60px_rgba(248,113,113,0.2)]'
+              }
+            `}
+          >
+            {/* Animated glow ring */}
+            <div 
+              className={`
+                absolute inset-0 rounded-2xl opacity-50 animate-pulse
+                ${playState.currentTeamTurn === 1 
+                  ? 'bg-cyan-400/10' 
+                  : 'bg-red-400/10'
+                }
+              `}
+            />
+            <span className="relative z-10 flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full animate-pulse ${
+                playState.currentTeamTurn === 1 ? 'bg-cyan-400' : 'bg-red-400'
+              }`} />
+              دور: {playState.currentTeamTurn === 1 ? sessionData.team1Data.name : sessionData.team2Data.name}
+            </span>
           </div>
         </div>
-      )}
 
-      {/* Miniaturized Header - Dual Team Timers */}
-      <header className="flex-shrink-0 px-4 py-2 md:px-6 md:py-3 mt-14">
-        <div className="flex items-center justify-between w-full gap-2 md:gap-4">
-          {/* Team 1 Score & Timer */}
+        {/* SEPARATED DUAL TIMERS - Massive, Ultra-Clear Standalone Cards */}
+        <div className="flex items-stretch justify-between gap-3 md:gap-6 w-full max-w-4xl mx-auto">
+          {/* Team 1 Timer Card - Blue/Cyan Theme */}
           <div 
-            className={`flex flex-col items-center gap-1 px-3 py-2 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
-              playState.currentTeamTurn === 1 
-                ? 'bg-cyan-500/20 border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.4)]' 
-                : 'bg-cyan-500/10 border border-cyan-400/30 opacity-60'
-            }`}
+            className={`
+              flex-1 flex flex-col items-center justify-center gap-2 p-3 md:p-4 rounded-2xl md:rounded-3xl
+              transition-all duration-300 ease-out
+              ${playState.currentTeamTurn === 1 
+                ? 'bg-gradient-to-br from-cyan-500/30 via-cyan-500/20 to-cyan-600/30 border-2 border-cyan-400 shadow-[0_0_40px_rgba(34,211,238,0.4)]' 
+                : 'bg-cyan-500/10 border border-cyan-400/30 opacity-50'
+              }
+            `}
           >
-            <span className={`text-xs md:text-sm font-medium ${playState.currentTeamTurn === 1 ? 'text-cyan-300' : 'text-cyan-400/60'}`}>
+            {/* Team Name */}
+            <span className={`text-sm md:text-base font-bold ${
+              playState.currentTeamTurn === 1 ? 'text-cyan-200' : 'text-cyan-400/60'
+            }`}>
               {sessionData.team1Data.name}
             </span>
+
+            {/* MASSIVE TIMER DISPLAY */}
+            <div 
+              className={`
+                flex items-center justify-center gap-2 px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl
+                ${team1Critical 
+                  ? 'bg-red-500/40 animate-pulse' 
+                  : team1Warning
+                    ? 'bg-yellow-500/30'
+                    : 'bg-black/30'
+                }
+              `}
+            >
+              <Timer className={`w-5 h-5 md:w-7 md:h-7 ${
+                team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-cyan-300'
+              }`} />
+              <span 
+                className={`
+                  text-3xl md:text-5xl font-black font-mono tabular-nums tracking-tight
+                  ${team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-white'}
+                `}
+              >
+                {formatTime(team1TimeMs)}
+              </span>
+            </div>
+
+            {/* Score */}
             <div className="flex items-center gap-2">
-              <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 1 ? 'text-white' : 'text-white/60'}`}>
+              <span className={`text-2xl md:text-3xl font-black ${
+                playState.currentTeamTurn === 1 ? 'text-white' : 'text-white/60'
+              }`}>
                 {playState.team1Score}
               </span>
-              {/* Team 1 Timer */}
-              <div 
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${
-                  team1Critical 
-                    ? 'bg-red-500/30 animate-pulse' 
-                    : team1Warning
-                      ? 'bg-yellow-500/20'
-                      : 'bg-white/10'
-                }`}
-              >
-                <Clock className={`w-3 h-3 ${
-                  team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-white/60'
-                }`} />
-                <span 
-                  className={`text-sm font-mono font-bold tabular-nums ${
-                    team1Critical ? 'text-red-400' : team1Warning ? 'text-yellow-400' : 'text-white/80'
-                  }`}
-                >
-                  {formatTime(team1TimeMs)}
-                </span>
-              </div>
+              <span className={`text-xs ${playState.currentTeamTurn === 1 ? 'text-cyan-300/80' : 'text-cyan-400/40'}`}>نقاط</span>
             </div>
+
+            {/* Active Player */}
             {playState.currentTeamTurn === 1 && team1Player && (
-              <span className="text-xs text-cyan-300">
+              <span className="text-xs md:text-sm text-cyan-300 bg-cyan-500/20 px-3 py-1 rounded-full">
                 {team1Player.name}
               </span>
             )}
           </div>
 
-          {/* Center - VS indicator */}
-          <div className="flex flex-col items-center">
-            <span className="text-white/40 text-xs font-bold">VS</span>
-            <div className="mt-1 flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                playState.currentTeamTurn === 1 ? 'bg-cyan-400 animate-pulse' : 'bg-cyan-400/30'
+          {/* VS Indicator - Center */}
+          <div className="flex flex-col items-center justify-center px-2">
+            <span className="text-white/30 text-xs font-bold mb-1">VS</span>
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                playState.currentTeamTurn === 1 ? 'bg-cyan-400 animate-pulse scale-125' : 'bg-cyan-400/30'
               }`} />
-              <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                playState.currentTeamTurn === 2 ? 'bg-red-400 animate-pulse' : 'bg-red-400/30'
+              <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                playState.currentTeamTurn === 2 ? 'bg-red-400 animate-pulse scale-125' : 'bg-red-400/30'
               }`} />
             </div>
           </div>
 
-          {/* Team 2 Score & Timer */}
+          {/* Team 2 Timer Card - Red Theme */}
           <div 
-            className={`flex flex-col items-center gap-1 px-3 py-2 md:px-4 md:py-2 rounded-xl transition-all duration-300 ${
-              playState.currentTeamTurn === 2 
-                ? 'bg-red-500/20 border-2 border-red-400 shadow-[0_0_20px_rgba(248,113,113,0.4)]' 
-                : 'bg-red-500/10 border border-red-400/30 opacity-60'
-            }`}
+            className={`
+              flex-1 flex flex-col items-center justify-center gap-2 p-3 md:p-4 rounded-2xl md:rounded-3xl
+              transition-all duration-300 ease-out
+              ${playState.currentTeamTurn === 2 
+                ? 'bg-gradient-to-br from-red-500/30 via-red-500/20 to-red-600/30 border-2 border-red-400 shadow-[0_0_40px_rgba(248,113,113,0.4)]' 
+                : 'bg-red-500/10 border border-red-400/30 opacity-50'
+              }
+            `}
           >
-            <span className={`text-xs md:text-sm font-medium ${playState.currentTeamTurn === 2 ? 'text-red-300' : 'text-red-400/60'}`}>
+            {/* Team Name */}
+            <span className={`text-sm md:text-base font-bold ${
+              playState.currentTeamTurn === 2 ? 'text-red-200' : 'text-red-400/60'
+            }`}>
               {sessionData.team2Data.name}
             </span>
-            <div className="flex items-center gap-2">
-              {/* Team 2 Timer */}
-              <div 
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${
-                  team2Critical 
-                    ? 'bg-red-500/30 animate-pulse' 
-                    : team2Warning
-                      ? 'bg-yellow-500/20'
-                      : 'bg-white/10'
-                }`}
+
+            {/* MASSIVE TIMER DISPLAY */}
+            <div 
+              className={`
+                flex items-center justify-center gap-2 px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl
+                ${team2Critical 
+                  ? 'bg-red-500/40 animate-pulse' 
+                  : team2Warning
+                    ? 'bg-yellow-500/30'
+                    : 'bg-black/30'
+                }
+              `}
+            >
+              <Timer className={`w-5 h-5 md:w-7 md:h-7 ${
+                team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-red-300'
+              }`} />
+              <span 
+                className={`
+                  text-3xl md:text-5xl font-black font-mono tabular-nums tracking-tight
+                  ${team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-white'}
+                `}
               >
-                <Clock className={`w-3 h-3 ${
-                  team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-white/60'
-                }`} />
-                <span 
-                  className={`text-sm font-mono font-bold tabular-nums ${
-                    team2Critical ? 'text-red-400' : team2Warning ? 'text-yellow-400' : 'text-white/80'
-                  }`}
-                >
-                  {formatTime(team2TimeMs)}
-                </span>
-              </div>
-              <span className={`text-xl md:text-2xl font-black ${playState.currentTeamTurn === 2 ? 'text-white' : 'text-white/60'}`}>
-                {playState.team2Score}
+                {formatTime(team2TimeMs)}
               </span>
             </div>
+
+            {/* Score */}
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl md:text-3xl font-black ${
+                playState.currentTeamTurn === 2 ? 'text-white' : 'text-white/60'
+              }`}>
+                {playState.team2Score}
+              </span>
+              <span className={`text-xs ${playState.currentTeamTurn === 2 ? 'text-red-300/80' : 'text-red-400/40'}`}>نقاط</span>
+            </div>
+
+            {/* Active Player */}
             {playState.currentTeamTurn === 2 && team2Player && (
-              <span className="text-xs text-red-300">
+              <span className="text-xs md:text-sm text-red-300 bg-red-500/20 px-3 py-1 rounded-full">
                 {team2Player.name}
               </span>
             )}
           </div>
-        </div>
-
-        {/* Turn indicator bar */}
-        <div className="mt-2 flex items-center justify-center gap-2">
-          <div className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-            playState.currentTeamTurn === 1 ? 'bg-cyan-400' : 'bg-cyan-400/20'
-          }`} />
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            playState.currentTeamTurn === 1 ? 'bg-cyan-500 text-white' : 'bg-red-500 text-white'
-          }`}>
-            دور: {playState.currentTeamTurn === 1 ? sessionData.team1Data.name : sessionData.team2Data.name}
-          </span>
-          <div className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-            playState.currentTeamTurn === 2 ? 'bg-red-400' : 'bg-red-400/20'
-          }`} />
         </div>
       </header>
 
