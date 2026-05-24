@@ -19,6 +19,10 @@ interface PlayerMatchupProps {
   ) => void
 }
 
+// Unified 5-second shuffle duration
+const SHUFFLE_DURATION_MS = 5000
+const SHUFFLE_INTERVAL_MS = 50
+
 export function PlayerMatchup({
   team1,
   team2,
@@ -33,8 +37,10 @@ export function PlayerMatchup({
   const [selectedPlayer2, setSelectedPlayer2] = useState<{ id: string; name: string } | null>(null)
   const [isLocked, setIsLocked] = useState(false)
 
-  const shuffleInterval1 = useRef<NodeJS.Timeout | null>(null)
-  const shuffleInterval2 = useRef<NodeJS.Timeout | null>(null)
+  // Refs for cleanup
+  const shuffleIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lockTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const mountedRef = useRef(true)
 
   // Smart player selection: Get available players from pool (not yet used in current cycle)
   const getAvailablePlayers = useCallback((
@@ -49,67 +55,67 @@ export function PlayerMatchup({
   const availablePlayers1 = getAvailablePlayers(team1.players, usedPlayersTeam1)
   const availablePlayers2 = getAvailablePlayers(team2.players, usedPlayersTeam2)
 
-  // Shuffle animation effect
+  // Unified 5-second shuffle effect with precise timing
   useEffect(() => {
     if (!isShuffling) return
 
-    // Start fast shuffling for team 1
-    shuffleInterval1.current = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * team1.players.length)
-      setDisplayName1(team1.players[randomIndex].name)
-    }, 80)
+    mountedRef.current = true
 
-    // Start fast shuffling for team 2
-    shuffleInterval2.current = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * team2.players.length)
-      setDisplayName2(team2.players[randomIndex].name)
-    }, 80)
+    // PRE-SELECT the final players FIRST (from available pool only - anti-repeat)
+    const finalPlayer1 = availablePlayers1[Math.floor(Math.random() * availablePlayers1.length)]
+    const finalPlayer2 = availablePlayers2[Math.floor(Math.random() * availablePlayers2.length)]
 
-    // Start slowing down after 2 seconds
-    const slowdownTimer = setTimeout(() => {
-      // Clear fast intervals
-      if (shuffleInterval1.current) clearInterval(shuffleInterval1.current)
-      if (shuffleInterval2.current) clearInterval(shuffleInterval2.current)
+    // Start rapid cycling every 50ms - shows random names from ALL players for visual effect
+    shuffleIntervalRef.current = setInterval(() => {
+      if (!mountedRef.current) return
+      
+      const randomIndex1 = Math.floor(Math.random() * team1.players.length)
+      const randomIndex2 = Math.floor(Math.random() * team2.players.length)
+      setDisplayName1(team1.players[randomIndex1].name)
+      setDisplayName2(team2.players[randomIndex2].name)
+    }, SHUFFLE_INTERVAL_MS)
 
-      // Select random players from AVAILABLE pool only (anti-repeat)
-      const selected1 = availablePlayers1[Math.floor(Math.random() * availablePlayers1.length)]
-      const selected2 = availablePlayers2[Math.floor(Math.random() * availablePlayers2.length)]
+    // Unified 5000ms timeout - EXACT timing
+    lockTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return
 
-      // Slow shuffle with decreasing speed
-      let delay = 100
-      const slowShuffle = (remaining: number) => {
-        if (remaining <= 0) {
-          setDisplayName1(selected1.name)
-          setDisplayName2(selected2.name)
-          setSelectedPlayer1(selected1)
-          setSelectedPlayer2(selected2)
-          setIsShuffling(false)
-          setIsLocked(true)
-          return
-        }
-
-        setTimeout(() => {
-          if (remaining > 3) {
-            setDisplayName1(team1.players[Math.floor(Math.random() * team1.players.length)].name)
-            setDisplayName2(team2.players[Math.floor(Math.random() * team2.players.length)].name)
-          } else {
-            setDisplayName1(selected1.name)
-            setDisplayName2(selected2.name)
-          }
-          slowShuffle(remaining - 1)
-        }, delay)
-        delay += 50
+      // IMMEDIATELY clear the interval
+      if (shuffleIntervalRef.current) {
+        clearInterval(shuffleIntervalRef.current)
+        shuffleIntervalRef.current = null
       }
 
-      slowShuffle(10)
-    }, 2000)
+      // Lock onto pre-selected final players
+      setDisplayName1(finalPlayer1.name)
+      setDisplayName2(finalPlayer2.name)
+      setSelectedPlayer1(finalPlayer1)
+      setSelectedPlayer2(finalPlayer2)
+      setIsShuffling(false)
+      setIsLocked(true)
+    }, SHUFFLE_DURATION_MS)
 
+    // Cleanup function
     return () => {
-      if (shuffleInterval1.current) clearInterval(shuffleInterval1.current)
-      if (shuffleInterval2.current) clearInterval(shuffleInterval2.current)
-      clearTimeout(slowdownTimer)
+      mountedRef.current = false
+      if (shuffleIntervalRef.current) {
+        clearInterval(shuffleIntervalRef.current)
+        shuffleIntervalRef.current = null
+      }
+      if (lockTimeoutRef.current) {
+        clearTimeout(lockTimeoutRef.current)
+        lockTimeoutRef.current = null
+      }
     }
   }, [isShuffling, team1.players, team2.players, availablePlayers1, availablePlayers2])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      if (shuffleIntervalRef.current) clearInterval(shuffleIntervalRef.current)
+      if (lockTimeoutRef.current) clearTimeout(lockTimeoutRef.current)
+    }
+  }, [])
 
   const handleContinue = useCallback(() => {
     if (selectedPlayer1 && selectedPlayer2) {
@@ -118,7 +124,7 @@ export function PlayerMatchup({
   }, [selectedPlayer1, selectedPlayer2, onComplete])
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center p-4 overflow-hidden">
+    <div dir="rtl" className="h-screen flex flex-col items-center justify-center p-4 overflow-hidden">
       {/* Header */}
       <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">المواجهة</h2>
       <p className="text-white/60 mb-8 md:mb-12">من سيواجه من؟</p>
@@ -248,12 +254,12 @@ export function PlayerMatchup({
         </div>
       </div>
 
-      {/* Continue button */}
+      {/* Continue button - disabled during shuffle, enabled only after lock */}
       <div className={`mt-8 md:mt-12 transition-all duration-500 ${isLocked ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <button
           onClick={handleContinue}
           disabled={!isLocked}
-          className="px-10 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xl font-bold rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/30 active:scale-95"
+          className="px-10 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xl font-bold rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
           متابعة
         </button>
