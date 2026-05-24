@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Check, SkipForward, Menu, Timer } from 'lucide-react'
 import type { GameSessionData } from '@/contexts/popup-context'
 import { PauseMenu } from '../components/pause-menu'
@@ -29,8 +29,93 @@ interface GameplayDashboardProps {
   isTieBreaker?: boolean
 }
 
-// Mock image URLs for dynamic loading
-const MOCK_IMAGES = [
+// FEATURE 3: Category-Specific Image Mapping
+// Each category has its own dedicated array of unique image URLs
+const CATEGORY_IMAGES: Record<string, string[]> = {
+  'أسئلة عامة': [
+    'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&q=80', // quiz/trivia
+    'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&q=80', // study
+    'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800&q=80', // books
+    'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800&q=80', // education
+    'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=800&q=80', // classroom
+    'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800&q=80', // library
+    'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=800&q=80', // books stack
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80', // thinking
+  ],
+  'تحدي حركي': [
+    'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80', // workout
+    'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&q=80', // gym
+    'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=800&q=80', // fitness
+    'https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=800&q=80', // exercise
+    'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&q=80', // stretching
+    'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&q=80', // yoga
+    'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80', // dance
+    'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=800&q=80', // running
+  ],
+  'سرعة بديهة': [
+    'https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=800&q=80', // quick thinking
+    'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&q=80', // brainstorm
+    'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&q=80', // fast work
+    'https://images.unsplash.com/photo-1553729459-efe14ef6055d?w=800&q=80', // clock/time
+    'https://images.unsplash.com/photo-1495364141860-b0d03eccd065?w=800&q=80', // watch
+    'https://images.unsplash.com/photo-1501139083538-0139583c060f?w=800&q=80', // speed
+    'https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?w=800&q=80', // fast writing
+    'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&q=80', // quick decision
+  ],
+  'معلومات رياضية': [
+    'https://images.unsplash.com/photo-1461896836934- voices-from-below?w=800&q=80', // soccer
+    'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=80', // football
+    'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80', // basketball
+    'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=800&q=80', // tennis
+    'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?w=800&q=80', // swimming
+    'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80', // hockey
+    'https://images.unsplash.com/photo-1471295253337-3ceaaedca402?w=800&q=80', // golf
+    'https://images.unsplash.com/photo-1530549387789-4c1017266635?w=800&q=80', // cycling
+  ],
+  'ألغاز ذكاء': [
+    'https://images.unsplash.com/photo-1494059980473-813e73ee784b?w=800&q=80', // puzzle
+    'https://images.unsplash.com/photo-1509228627152-72ae9ae6848d?w=800&q=80', // maze
+    'https://images.unsplash.com/photo-1550684376-efcbd6e3f031?w=800&q=80', // rubiks
+    'https://images.unsplash.com/photo-1611996575749-79a3a250f948?w=800&q=80', // brain
+    'https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=800&q=80', // chess
+    'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=800&q=80', // sudoku
+    'https://images.unsplash.com/photo-1547104442-9f0af4f37a87?w=800&q=80', // mystery
+    'https://images.unsplash.com/photo-1516110833967-0b5716ca1387?w=800&q=80', // jigsaw
+  ],
+  'تمثيل صامت': [
+    'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=800&q=80', // theater
+    'https://images.unsplash.com/photo-1516307365426-bea591f05011?w=800&q=80', // mime
+    'https://images.unsplash.com/photo-1503095396549-807759245b35?w=800&q=80', // acting
+    'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?w=800&q=80', // performance
+    'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&q=80', // stage
+    'https://images.unsplash.com/photo-1514306191717-452ec28c7814?w=800&q=80', // drama
+    'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=800&q=80', // expression
+    'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=800&q=80', // music/silent
+  ],
+  'أكمل الجملة': [
+    'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800&q=80', // writing
+    'https://images.unsplash.com/photo-1471107340929-a87cd0f5b5f3?w=800&q=80', // notebook
+    'https://images.unsplash.com/photo-1517842645767-c639042777db?w=800&q=80', // notes
+    'https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=800&q=80', // typing
+    'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&q=80', // laptop
+    'https://images.unsplash.com/photo-1501504905252-473c47e087f8?w=800&q=80', // coffee & work
+    'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800&q=80', // microphone
+    'https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=800&q=80', // pen & paper
+  ],
+  'تحدي سريع': [
+    'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&q=80', // party/fun
+    'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80', // celebration
+    'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&q=80', // game night
+    'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=800&q=80', // friends
+    'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800&q=80', // group fun
+    'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=800&q=80', // family game
+    'https://images.unsplash.com/photo-1525268323446-0505b6fe7778?w=800&q=80', // competition
+    'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80', // challenge
+  ],
+}
+
+// Default fallback images if category not found
+const DEFAULT_IMAGES = [
   'https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=800&q=80',
   'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
   'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=800&q=80',
@@ -54,13 +139,63 @@ export function GameplayDashboard({
   const [team1TimeMs, setTeam1TimeMs] = useState(sessionData.timePerPlayer * 1000)
   const [team2TimeMs, setTeam2TimeMs] = useState(sessionData.timePerPlayer * 1000)
   const [isPaused, setIsPaused] = useState(false)
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+
+  // FEATURE 5: Anti-repeat image pool - track available images for current category
+  const [availableImagePool, setAvailableImagePool] = useState<string[]>([])
+  const [currentImageUrl, setCurrentImageUrl] = useState<string>('')
   
   // Ref for precise interval timing
   const lastTickRef = useRef<number>(Date.now())
   const animationFrameRef = useRef<number | null>(null)
   const roundEndedRef = useRef(false)
+
+  // Get images for current category
+  const categoryImages = useMemo(() => {
+    const category = playState.selectedCategory
+    if (category && CATEGORY_IMAGES[category]) {
+      return CATEGORY_IMAGES[category]
+    }
+    return DEFAULT_IMAGES
+  }, [playState.selectedCategory])
+
+  // Initialize image pool when category changes
+  useEffect(() => {
+    // Start with full pool for the selected category
+    const freshPool = [...categoryImages]
+    setAvailableImagePool(freshPool)
+    
+    // Set initial image
+    if (freshPool.length > 0) {
+      const randomIndex = Math.floor(Math.random() * freshPool.length)
+      const selectedImage = freshPool[randomIndex]
+      setCurrentImageUrl(selectedImage)
+      // Remove from pool
+      setAvailableImagePool(prev => prev.filter(img => img !== selectedImage))
+    }
+  }, [categoryImages])
+
+  // Function to get next image from pool (anti-repeat)
+  const getNextImage = useCallback(() => {
+    setAvailableImagePool(currentPool => {
+      let pool = currentPool
+      
+      // FEATURE 5: If pool is empty, refill with all category images
+      if (pool.length === 0) {
+        pool = [...categoryImages]
+      }
+      
+      // Select random image from available pool
+      const randomIndex = Math.floor(Math.random() * pool.length)
+      const selectedImage = pool[randomIndex]
+      
+      // Update current image
+      setCurrentImageUrl(selectedImage)
+      
+      // Return pool with selected image removed (splice equivalent)
+      return pool.filter(img => img !== selectedImage)
+    })
+  }, [categoryImages])
 
   // Pause when menu opens
   useEffect(() => {
@@ -124,33 +259,22 @@ export function GameplayDashboard({
     }
   }, [isPaused, playState.currentTeamTurn])
 
-  // Change image to a random different one
-  const changeImage = useCallback(() => {
-    setCurrentImageIndex(prev => {
-      let newIndex = Math.floor(Math.random() * MOCK_IMAGES.length)
-      while (newIndex === prev && MOCK_IMAGES.length > 1) {
-        newIndex = Math.floor(Math.random() * MOCK_IMAGES.length)
-      }
-      return newIndex
-    })
-  }, [])
-
-  // Handle correct answer - change image, toggle turn, NO timer reset
+  // Handle correct answer - change image (from pool), toggle turn, NO timer reset
   const handleCorrect = useCallback(() => {
-    changeImage()
+    getNextImage()
     onCorrectAnswer()
-  }, [changeImage, onCorrectAnswer])
+  }, [getNextImage, onCorrectAnswer])
 
-  // Handle skip - subtract 5 seconds penalty from ACTIVE team's timer, toggle turn
+  // Handle skip - subtract 5 seconds penalty from ACTIVE team's timer, change image, toggle turn
   const handleSkip = useCallback(() => {
     if (playState.currentTeamTurn === 1) {
       setTeam1TimeMs(prev => Math.max(0, prev - 5000))
     } else {
       setTeam2TimeMs(prev => Math.max(0, prev - 5000))
     }
-    changeImage()
+    getNextImage()
     onSkip()
-  }, [changeImage, onSkip, playState.currentTeamTurn])
+  }, [getNextImage, onSkip, playState.currentTeamTurn])
 
   // Format time display (show seconds with one decimal)
   const formatTime = (ms: number) => {
@@ -388,9 +512,9 @@ export function GameplayDashboard({
             className="relative w-full h-full max-h-full rounded-2xl md:rounded-3xl overflow-hidden border-2 border-white/20 bg-gradient-to-br from-white/5 to-white/10"
             style={{ aspectRatio: '16/9', maxWidth: '100%', maxHeight: '100%' }}
           >
-            {/* Actual image */}
+            {/* Actual image - Uses category-specific image from pool */}
             <img
-              src={MOCK_IMAGES[currentImageIndex]}
+              src={currentImageUrl}
               alt="تحدي"
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
               crossOrigin="anonymous"

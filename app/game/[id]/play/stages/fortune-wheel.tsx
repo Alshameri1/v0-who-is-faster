@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 interface FortuneWheelProps {
   onComplete: (category: string) => void
 }
 
-// Default fun categories
+// Default fun categories with explicit colors
 const CATEGORIES = [
   { id: 1, name: 'أسئلة عامة', color: '#22d3ee' },      // cyan
   { id: 2, name: 'تحدي حركي', color: '#f43f5e' },       // red/rose
@@ -18,13 +18,29 @@ const CATEGORIES = [
   { id: 8, name: 'تحدي سريع', color: '#14b8a6' },       // teal
 ]
 
+// Spin animation duration in ms
+const SPIN_DURATION_MS = 4000
+
 export function FortuneWheel({ onComplete }: FortuneWheelProps) {
   const [isSpinning, setIsSpinning] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showResult, setShowResult] = useState(false)
   const wheelRef = useRef<HTMLDivElement>(null)
+  const spinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const mountedRef = useRef(true)
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      if (spinTimeoutRef.current) {
+        clearTimeout(spinTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  // "RESULT-FIRST" approach: Pick category first, then calculate exact rotation
   const spinWheel = useCallback(() => {
     if (isSpinning) return
 
@@ -32,27 +48,46 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
     setShowResult(false)
     setSelectedCategory(null)
 
-    // Random number of full rotations (5-8) + random segment
-    const fullRotations = 5 + Math.floor(Math.random() * 4)
-    const segmentAngle = 360 / CATEGORIES.length
-    const randomSegment = Math.floor(Math.random() * CATEGORIES.length)
-    const extraDegrees = randomSegment * segmentAngle + segmentAngle / 2
+    // STEP 1: Randomly select the winning category FIRST
+    const winningIndex = Math.floor(Math.random() * CATEGORIES.length)
+    const winningCategory = CATEGORIES[winningIndex]
 
-    const totalRotation = rotation + (fullRotations * 360) + extraDegrees
+    // STEP 2: Calculate exact rotation to land on that category
+    const segmentAngle = 360 / CATEGORIES.length
+    
+    // The pointer is at top (12 o'clock = 0 degrees in CSS)
+    // Segment 0 starts at -90deg (because we drew segments starting from 3 o'clock position)
+    // To align segment N with the pointer at top, we need:
+    // - Segment center angle from top = (N * segmentAngle) + (segmentAngle / 2) - 90
+    // - But we rotate clockwise, so we need the wheel to stop such that the winning segment is at top
+    
+    // Calculate where the winning segment's center currently is
+    // After full rotations, we want the wheel oriented so winning segment is at top
+    // The angle needed = -(winningIndex * segmentAngle + segmentAngle / 2) + 90
+    // But CSS rotation is clockwise positive, and we've been accumulating rotation
+    
+    // Simplified: Calculate the final angle where winning segment aligns with top pointer
+    // We want the segment's center at the top (0°)
+    // Segment N center is at: (N + 0.5) * segmentAngle degrees from start
+    // To bring it to top, we rotate by: 360 - (N + 0.5) * segmentAngle + small offset
+    
+    const targetAngleWithinCircle = 360 - ((winningIndex + 0.5) * segmentAngle)
+    
+    // Add 5-8 full rotations for dramatic effect
+    const fullRotations = 5 + Math.floor(Math.random() * 4)
+    const totalRotation = rotation + (fullRotations * 360) + targetAngleWithinCircle - (rotation % 360)
 
     setRotation(totalRotation)
 
-    // Calculate which category will be selected
-    // The pointer is at the top, so we need to account for the rotation
-    const normalizedRotation = totalRotation % 360
-    const selectedIndex = Math.floor((360 - normalizedRotation + segmentAngle / 2) / segmentAngle) % CATEGORIES.length
-
-    // Wait for animation to complete
-    setTimeout(() => {
+    // STEP 3: Wait for animation to complete, then show the PRE-SELECTED result
+    spinTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return
+      
       setIsSpinning(false)
-      setSelectedCategory(CATEGORIES[selectedIndex].name)
+      // Display the SAME category we calculated rotation for - guaranteed sync
+      setSelectedCategory(winningCategory.name)
       setShowResult(true)
-    }, 4000)
+    }, SPIN_DURATION_MS)
   }, [isSpinning, rotation])
 
   const handleContinue = useCallback(() => {
@@ -94,7 +129,7 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+    <div dir="rtl" className="min-h-screen flex flex-col items-center justify-center p-4">
       {/* Header */}
       <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">عجلة الحظ</h2>
       <p className="text-white/60 mb-8">اختر الفئة بلف العجلة</p>
@@ -115,7 +150,7 @@ export function FortuneWheel({ onComplete }: FortuneWheelProps) {
           className="relative transition-transform ease-out"
           style={{
             transform: `rotate(${rotation}deg)`,
-            transitionDuration: isSpinning ? '4s' : '0s',
+            transitionDuration: isSpinning ? `${SPIN_DURATION_MS}ms` : '0s',
             transitionTimingFunction: 'cubic-bezier(0.17, 0.67, 0.12, 0.99)',
           }}
         >

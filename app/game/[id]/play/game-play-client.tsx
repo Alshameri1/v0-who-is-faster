@@ -113,24 +113,28 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
     }
   }, [gameId])
 
-  // Helper: Refill player pool for a team if empty
+  // FEATURE 4: Strict Anti-Repeat Player Pool
+  // Helper: Refill player pool for a team when ALL players have been used exactly once
   const refillPlayerPoolIfNeeded = useCallback((
-    currentPool: string[],
     usedPlayers: string[],
     allPlayers: { id: string; name: string }[]
   ): { pool: string[]; used: string[] } => {
-    // Get available players (in pool but not yet used)
-    const available = currentPool.filter(id => !usedPlayers.includes(id))
+    // Calculate available players (all players minus used ones)
+    const availableCount = allPlayers.length - usedPlayers.length
     
-    if (available.length === 0) {
-      // All players have been used - refill the pool
+    if (availableCount <= 0) {
+      // ALL players have been used exactly once - reset the cycle
       return {
         pool: allPlayers.map(p => p.id),
-        used: [], // Reset used list
+        used: [], // Reset used list to start new cycle
       }
     }
     
-    return { pool: currentPool, used: usedPlayers }
+    // Still have available players - keep current state
+    return { 
+      pool: allPlayers.map(p => p.id), 
+      used: usedPlayers 
+    }
   }, [])
 
   // Stage transition handlers
@@ -223,13 +227,12 @@ export function GamePlayClient({ gameId }: GamePlayClientProps) {
     }
 
     // More rounds to play - proceed to next round
+    // FEATURE 4: Check if player pools need refilling (all players used once)
     const team1Refill = refillPlayerPoolIfNeeded(
-      playState.playerPoolTeam1,
       playState.usedPlayersTeam1,
       sessionData.team1Data.players
     )
     const team2Refill = refillPlayerPoolIfNeeded(
-      playState.playerPoolTeam2,
       playState.usedPlayersTeam2,
       sessionData.team2Data.players
     )
